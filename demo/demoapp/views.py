@@ -6,6 +6,9 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import google.generativeai as genai
 import textwrap
+from django.core.files.base import ContentFile
+import base64
+from .models import DashboardChart
 
 GOOGLE_API_KEY='AIzaSyDtiq-CBPFG500PMG_UJtO08wf4EQnz9H4'
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -58,6 +61,36 @@ def get_chart_data(request):
             return JsonResponse({'error':'Sorry, I cannot respond to any other prompts that are not relevant to your database' }, status=400)
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
+
+
+
+@csrf_exempt
+def save_chart_to_dashboard(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            description = data.get('description')
+            chart_image_data = data.get('image')  # Base64 encoded image
+
+            if not description or not chart_image_data:
+                return JsonResponse({'error': 'Missing description or image data'}, status=400)
+
+            # Decode the base64 image data
+            format, imgstr = chart_image_data.split(';base64,')
+            ext = format.split('/')[-1]
+            image_data = ContentFile(base64.b64decode(imgstr), name=f'chart_{description[:10]}.{ext}')
+
+            # Save to model
+            dashboard_chart = DashboardChart(description=description, image=image_data)
+            dashboard_chart.save()
+
+            return JsonResponse({'success': 'Chart saved successfully'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
+
 def get_insights(prompt, data):
     instructions = f'''
                     - You are given with the prompt and the result of the prompt.
@@ -72,4 +105,12 @@ def get_insights(prompt, data):
     insights =model.generate_content(instructions)
     result = to_markdown(insights.text).strip()
     return result
+
+
+def get_saved_charts(request):
+    charts = DashboardChart.objects.all().order_by('-created_at')
+    data = [{'description': chart.description, 'image': chart.image.url} for chart in charts][:6]
+    return JsonResponse({'charts': data}, safe=False)
+
+
     
