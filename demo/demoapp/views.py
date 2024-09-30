@@ -8,7 +8,7 @@ import google.generativeai as genai
 import textwrap
 from django.core.files.base import ContentFile
 import base64
-from .models import DashboardChart
+from .models import DashboardChart, PDFFile
 
 GOOGLE_API_KEY='AIzaSyDtiq-CBPFG500PMG_UJtO08wf4EQnz9H4'
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -63,7 +63,6 @@ def get_chart_data(request):
 
 
 
-
 @csrf_exempt
 def save_chart_to_dashboard(request):
     if request.method == 'POST':
@@ -102,7 +101,7 @@ def get_insights(prompt, data):
                     - provide only relevant information not any explanations or exaggerations.
                     - never never describe the array and explain the user how you find out the information. just tell them your result. 
                     '''
-    insights =model.generate_content(instructions)
+    insights = model.generate_content(instructions)
     result = to_markdown(insights.text).strip()
     return result
 
@@ -111,6 +110,27 @@ def get_saved_charts(request):
     charts = DashboardChart.objects.all().order_by('-created_at')
     data = [{'description': chart.description, 'image': chart.image.url} for chart in charts][:6]
     return JsonResponse({'charts': data}, safe=False)
+
+
+@csrf_exempt
+def upload_pdf(request):
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        file = request.FILES.get('file')
+
+        if name and file:
+            pdf = PDFFile.objects.create(name=name, file=file)
+            pdf.save()
+            return JsonResponse({'message': 'PDF uploaded successfully'}, status=201)
+        else:
+            return JsonResponse({'error': 'Invalid data'}, status=400)
+
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+def get_saved_files(request):
+    files = PDFFile.objects.all()[::-1]
+    data = [{'fileName' : f.name, 'file' : f.file.url} for f in files][:5]
+    return JsonResponse({'pdf_files':data}, safe = False)
 
 
     
