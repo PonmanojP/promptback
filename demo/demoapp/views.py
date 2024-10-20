@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.db import connection
 from django.views.decorators.csrf import csrf_exempt
 import json
+from django.contrib.auth.models import User
 import google.generativeai as genai
 import textwrap
 from django.core.files.base import ContentFile
@@ -17,6 +18,31 @@ model = genai.GenerativeModel('gemini-pro')
 def to_markdown(text):
     text = text.replace('•', '  *')
     return textwrap.indent(text, '', predicate=lambda _: True)
+
+
+@csrf_exempt
+def signup(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            email = data.get('email')
+            password = data.get('password')
+
+            if User.objects.filter(username=username).exists():
+                return JsonResponse({'message': 'Username already exists'}, status=400)
+            
+            if User.objects.filter(email=email).exists():
+                return JsonResponse({'message': 'Email already exists'}, status=400)
+
+            # Create the user
+            user = User.objects.create_user(username=username, email=email, password=password)
+            return JsonResponse({'message': 'User created successfully'}, status=201)
+
+        except Exception as e:
+            return JsonResponse({'message': 'An error occurred'}, status=500)
+    else:
+        return JsonResponse({'message': 'Invalid request method'}, status=405)
 
 @csrf_exempt
 def get_chart_data(request):
@@ -89,7 +115,6 @@ def save_chart_to_dashboard(request):
     return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 
-
 def get_insights(prompt, data):
     instructions = f'''
                     - You are given with the prompt and the result of the prompt.
@@ -105,12 +130,10 @@ def get_insights(prompt, data):
     result = to_markdown(insights.text).strip()
     return result
 
-
 def get_saved_charts(request):
     charts = DashboardChart.objects.all().order_by('-created_at')
     data = [{'description': chart.description, 'image': chart.image.url} for chart in charts][:6]
     return JsonResponse({'charts': data}, safe=False)
-
 
 @csrf_exempt
 def upload_pdf(request):
@@ -126,6 +149,8 @@ def upload_pdf(request):
             return JsonResponse({'error': 'Invalid data'}, status=400)
 
     return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
 
 def get_saved_files(request):
     files = PDFFile.objects.all()[::-1]
